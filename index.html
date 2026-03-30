@@ -152,6 +152,13 @@ tr:hover td{background:var(--sur)}.rlink{cursor:pointer;color:var(--or);text-dec
         <thead><tr><th>Nr</th><th>Endereco</th><th>Valor</th><th>Proprietario</th><th>Fotos</th><th>Visita</th><th>Status</th><th>Tipo</th><th>Cidade</th><th>Bairro</th><th>Tel</th><th>Obs</th><th>Acoes</th></tr></thead>
         <tbody id="capBody"></tbody>
       </table>
+      <div id="importBar" style="display:none;background:var(--am2);border:1px solid var(--am);border-radius:var(--ra);padding:10px 16px;margin:12px 20px;font-size:13px;color:var(--am);align-items:center;gap:10px;flex-wrap:wrap">
+        <span>&#9888; Encontramos imoveis salvos localmente. Importar para a nuvem agora?</span>
+        <div style="display:flex;gap:8px;margin-left:auto">
+          <button class="btn btn-or" onclick="window.importarLocais()">Importar</button>
+          <button class="btn" onclick="document.getElementById('importBar').style.display='none'">Ignorar</button>
+        </div>
+      </div>
       <div id="capLoading" class="loading"><span class="spinner"></span>Carregando...</div>
       <div id="capEmpty" class="empty" style="display:none">Nenhum imovel encontrado.</div>
     </div>
@@ -201,17 +208,18 @@ tr:hover td{background:var(--sur)}.rlink{cursor:pointer;color:var(--or);text-dec
     <div class="fg fw"><label>Nome Proprietario</label><input id="fProp"/></div>
     <div class="fg"><label>Idade</label><input id="fIdade" type="number"/></div>
     <div class="fg"><label>Telefone</label><input id="fTel" placeholder="(51) 9 xxxx-xxxx"/></div>
-    <div class="slinha">Contato, Fotos e Visita</div>
+    <div class="slinha">Contato e Fotos</div>
     <div class="fg"><label>Canal de Contato</label><select id="fCanal"><option value="">Nao definido</option><option>WhatsApp</option><option>E-mail</option><option>Ligacao</option></select></div>
     <div class="fg"><label>Fotos</label><select id="fFotos"><option value="">Nao definido</option><option>Agendadas</option><option>Realizadas</option><option>Suspensas</option></select></div>
-    <div class="fg"><label>Visita</label><select id="fVisita"><option value="">Nao definido</option><option>Agendada</option><option>Realizada</option><option>Suspensa</option></select></div>
     <div class="slinha">Status e Documentacao</div>
     <div class="fg"><label>Status</label><select id="fStatus"><option>Sem contato</option><option>Contato feito</option><option>Resposta Pendente</option><option>Agenciado</option><option>Vendido por terceiros</option><option>Vendido RGI</option><option>Obito</option></select></div>
     <div class="fg"><label>Documentacao</label><select id="fDocs"><option value="">Nao informado</option><option value="Completo">Completo</option><option value="Falta matricula">Falta matricula</option><option value="Falta autorizacao">Falta autorizacao</option></select></div>
     <div class="slinha">Datas e Observacoes</div>
     <div class="fg"><label>Data 1o Contato</label><input id="fD1" type="date"/></div>
     <div class="fg"><label>Data Resposta</label><input id="fD2" type="date"/></div>
-    <div class="fg fw"><label>Observacoes</label><textarea id="fObs"></textarea></div>
+    <div class="fg"><label>Visita</label><select id="fVisita"><option value="">Nao definido</option><option>Agendada</option><option>Realizada</option><option>Suspensa</option></select></div>
+    <div class="fg fw"><label>Observacoes da visita</label><textarea id="fObsVisita" placeholder="Anotacoes sobre a visita..."></textarea></div>
+    <div class="fg fw"><label>Observacoes gerais</label><textarea id="fObs"></textarea></div>
     <div class="fg fw"><label>Anotacoes Extras</label><textarea id="fAnot"></textarea></div>
   </div>
   <div class="pfoot"><button class="btn" onclick="fechar('ovCad')">Cancelar</button><button class="btn btn-or" onclick="salvar()">Salvar</button></div>
@@ -331,6 +339,7 @@ function iniciarEscuta(){
     });
     document.getElementById('capLoading').style.display = 'none';
     renderTudo();
+    verificarLocais();
   }, function(err){
     console.error(err);
     document.getElementById('capLoading').style.display = 'none';
@@ -560,6 +569,7 @@ window.openCad = function(idx){
   document.getElementById('fD1').value=i.d1||'';
   document.getElementById('fD2').value=i.d2||'';
   document.getElementById('fAnot').value=i.anot||'';
+  document.getElementById('fObsVisita').value=i.obsVisita||'';
   document.getElementById('fDocs').value=i.docs||'';
   document.getElementById('fFotos').value=i.fotos||'';
   document.getElementById('fVisita').value=i.visita||'';
@@ -577,7 +587,7 @@ window.salvar = async function(){
     canal:g('fCanal'),status:status,obs:g('fObs'),
     tipo:g('fTipo'),cidade:g('fCid'),bairro:g('fBairro'),
     tel:g('fTel'),d1:g('fD1'),d2:g('fD2'),anot:g('fAnot'),
-    docs:docsVal,fotos:g('fFotos'),visita:g('fVisita')
+    docs:docsVal,fotos:g('fFotos'),visita:g('fVisita'),obsVisita:g('fObsVisita')
   };
   var btn = document.querySelector('#ovCad .btn-or');
   btn.textContent='Salvando...'; btn.disabled=true;
@@ -652,6 +662,48 @@ window.envWha = function(){
   window.open('https://wa.me/55'+num+'?text='+encodeURIComponent(msgs[msgIdx].txt),'_blank');
 };
 window.copMsg = function(){ window.copiar(msgs[msgIdx].txt,'cpok'); };
+
+// ---- IMPORTAR DADOS LOCAIS ----
+var CHAVES_LOCAIS = ['sac_dados_v5','sac_v4','sac_v3','sac_html_v1'];
+
+function lerDadosLocais(){
+  for(var k=0;k<CHAVES_LOCAIS.length;k++){
+    try{
+      var d=localStorage.getItem(CHAVES_LOCAIS[k]);
+      if(d){var p=JSON.parse(d);if(Array.isArray(p)&&p.length>0)return p;}
+    }catch(e){}
+  }
+  return null;
+}
+
+function verificarLocais(){
+  var locais=lerDadosLocais();
+  if(locais&&locais.length>0){
+    document.getElementById('importBar').style.display='flex';
+  }
+}
+
+window.importarLocais = async function(){
+  var locais=lerDadosLocais();
+  if(!locais||locais.length===0){alert('Nenhum dado local encontrado.');return;}
+  var bar=document.getElementById('importBar');
+  bar.innerHTML='<span class="spinner"></span><span>Importando '+locais.length+' imoveis...</span>';
+  var ok=0;var erros=0;
+  for(var i=0;i<locais.length;i++){
+    var item=Object.assign({},locais[i]);
+    delete item._id;
+    if(!item.criadoEm) item.criadoEm=Date.now()+(i*100);
+    if(!item.obsVisita) item.obsVisita='';
+    try{
+      await addDoc(collection(db,'imoveis'),item);
+      ok++;
+    }catch(e){erros++;}
+  }
+  bar.innerHTML='<span>&#10003; '+ok+' imoveis importados com sucesso'+(erros>0?' ('+erros+' erros)':'')+'.</span><button class="btn btn-sm" onclick="document.getElementById(\'importBar\').style.display=\'none\'" style="margin-left:auto">Fechar</button>';
+  CHAVES_LOCAIS.forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+};
+
+// verifica dados locais apos login
 
 </script>
 </body>
